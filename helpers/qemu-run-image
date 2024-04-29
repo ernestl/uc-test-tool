@@ -1,0 +1,93 @@
+#!/bin/bash
+
+set -eu
+
+# Run pc image
+# run_pc_image <image_file> <ssh_port>
+run_pc_image()
+{
+    image_file=$1	
+    ssh_port=$2
+
+    sudo qemu-system-x86_64 \
+    -enable-kvm \
+    -smp 1 \
+    -m 2048 \
+    -machine q35 \
+    -cpu host \
+    -rtc clock=host \
+    -global ICH9-LPC.disable_s3=1 \
+    -net nic,model=virtio \
+    -net user,hostfwd=tcp::"$ssh_port"-:22,hostfwd=tcp::8060-:80  \
+    -drive file=/usr/share/OVMF/OVMF_CODE.secboot.fd,if=pflash,format=raw,unit=0,readonly=on \
+    -drive file=/usr/share/OVMF/OVMF_VARS.ms.fd,if=pflash,format=raw,unit=1 \
+    -drive file="$image_file",if=none,format=raw,id=disk1 \
+    -device virtio-blk-pci,drive=disk1,bootindex=1 \
+    -serial mon:stdio
+}
+
+# Help
+help()
+{
+    echo "SYNTAX: qemu_run_image [options]"
+    echo "OPTIONS:"
+    echo " -h | --help    Print Help"
+    echo " --system=      Supports systems: pc (x86/amd64)"
+}
+
+# Parse options
+parse_options()
+{
+    # Defaults
+    SYSTEM="pc"
+    IMAGE_FILE="pc.img"
+    SSH_PORT="8022"
+
+    if [[ $# -eq 0 ]]; then
+        set -- "--help"
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        key=$1
+        case $key in
+            --system=*)
+                SYSTEM="${1#*=}"
+		shift
+                ;;
+	    --image-file=*)
+		IMAGE_FILE="${1#*=}"
+		shift
+		;;
+	    --ssh-port=*)
+		SSH_PORT="${1#*=}"
+		shift
+		;;
+            -h|--help)
+                shift
+                help
+                exit 1
+                ;;
+            *)
+                echo "Unknown option: $1"
+                shift
+                help
+                exit 1
+                ;;
+	esac
+    done
+
+    export SYSTEM IMAGE_FILE SSH_PORT
+}
+
+# Requires super user privilege
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Super user privilege required, please use sudo"
+    exit 1
+fi
+
+parse_options "$@"
+
+# Select appropriate QEMU setup
+if [ "$SYSTEM" == "pc" ]; then
+    run_pc_image "$IMAGE_FILE" "$SSH_PORT"
+fi

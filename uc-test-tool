@@ -1,0 +1,70 @@
+#!/bin/bash
+
+set -eu
+
+this_dir=$(dirname "$(realpath "$0")")
+
+# Settings
+CONFIG_FILE="$this_dir/.config"
+IMAGE_DIR="$this_dir/images"
+HELPERS_DIR="$this_dir/helpers"
+
+# Includes
+# shellcheck disable=SC1091
+source "$HELPERS_DIR"/config-tool 
+
+# Install prerequisite tools
+sudo "$HELPERS_DIR"/install
+
+# Configure
+"$HELPERS_DIR"/configure
+
+# Load configuration state
+user_config_changed=$(config_get "$CONFIG_FILE" "User_Config_Changed")
+user_config_build=$(config_get "$CONFIG_FILE" "User_Config_Build")
+base=$(config_get "$CONFIG_FILE" "User_Config_Base")
+core_snap=$(config_get "$CONFIG_FILE" "User_Config_Snap_Core")
+gadget_snap=$(config_get "$CONFIG_FILE" "User_Config_Snap_Gadget")
+kernel_snap=$(config_get "$CONFIG_FILE" "User_Config_Snap_Kernel")
+snapd_snap=$(config_get "$CONFIG_FILE" "User_Config_Snap_Snapd")
+snapcraft_sign_key=$(config_get "$CONFIG_FILE" "Snapcraft-Sign-Key")
+
+# Image base is required
+if [[ $base == "none"  ]]; then
+    echo "Image base not specified - please edit the user configuration"
+fi
+
+override_snaps=()
+if [[ "$core_snap" != "none" ]]; then
+    override_snaps+=("--core-snap=$core_snap")
+fi
+if [[ "$gadget_snap" != "none" ]]; then
+    override_snaps+=("--gadget-snap=$gadget_snap")
+fi
+if [[ "$kernel_snap" != "none" ]]; then
+    override_snaps+=("--kernel-snap=$kernel_snap")
+fi
+if [[ "$snapd_snap" != "none" ]]; then
+    override_snaps+=("--snapd-snap=$snapd_snap")
+fi
+
+# Build image
+
+if [[ "$user_config_changed" == "false" ]] && [[ "$user_config_build" == "true" ]]; then
+    echo "User configuration did not change, skipping image building"
+else
+    "$HELPERS_DIR"/build-image \
+    "$base" \
+    "$snapcraft_sign_key" \
+    --image-size="3G" \
+    "${override_snaps[@]}"
+    config_set "$CONFIG_FILE" "User_Config_Build" "true"
+fi
+
+# Run PC image in separate terminal
+ssh_port=$(config_get "$CONFIG_FILE" "User_Config_SSH_Port")
+image_file=$IMAGE_DIR/pc.img
+gnome-terminal --title="QEMU" -- bash -c "sudo $HELPERS_DIR/qemu-run-image --system=pc --image-file=$image_file --ssh-port=$ssh_port"
+
+# Login over SSH
+"$HELPERS_DIR"/qemu-ssh --ssh-port="$ssh_port"

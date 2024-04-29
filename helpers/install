@@ -1,0 +1,51 @@
+#!/bin/bash
+
+set -eu
+
+this_dir=$(dirname "$(realpath "$0")")
+
+# Includes
+# shellcheck disable=SC1091
+source "$this_dir/config-tool" # Tool for manipulating configuration options
+
+#Settings
+CONFIG_FILE="$this_dir/../.config"
+VERBOSE=
+
+run() 
+{
+    if $VERBOSE; then
+        v=$(exec 2>&1 && set -x && set -- "$@")
+	echo "#${v#*--}"
+	"$@"
+    else
+        "$@" >/dev/null 2>&1
+    fi
+}
+
+# Requires super user privilege
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Super user privilege required, please use sudo"
+    exit 1
+fi
+
+# Install tools if it was not done
+if [ "$(config_get "$CONFIG_FILE" "Install")" != "done" ]; then
+    echo "Installing tools..."
+    # List of tools to install
+    run apt install -y wget
+    run apt install -y qemu-kvm
+    run apt install -y ovmf
+    run apt install -y gnome-terminal
+    run apt install -y xclip
+    run snap install jq
+    run snap install snapcraft --classic
+    run snap install ubuntu-image
+    # Remember successful installation
+    config_set "$CONFIG_FILE" "Install" "done"
+    echo "Installing tools: done"
+else
+    echo "Tools already installed, skipping"
+fi
+
+

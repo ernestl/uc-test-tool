@@ -1,0 +1,11 @@
+{
+  "type": "model",
+  "series": "16",
+  "authority-id": "canonical",
+  "brand-id": "canonical",
+  "model": "pc-amd64",
+  "architecture": "amd64",
+  "timestamp": "2016-08-31T00:00:00.0Z",
+  "gadget": "pc",
+  "kernel": "pc-kernel"
+}

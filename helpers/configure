@@ -1,0 +1,199 @@
+#!/bin/bash
+
+set -eu
+
+this_dir=$(dirname "$(realpath "$0")")
+
+# Includes
+# shellcheck disable=SC1091
+source "$this_dir/config-tool" # Tool for manipulating configuration options
+# shellcheck disable=SC1091
+source "$this_dir/../user-config" # User defined system configuration
+
+# Settings
+CONFIG_FILE="$this_dir/../.config"
+
+# Ubuntu One Account Configuration
+ubuntu_one_account_config()
+{
+    echo "This script requires an Ubuntu One account to enable login to Snapcraft"
+    echo -n "Do you have an Ubuntu One account? (Y/n): "
+    read -r choice
+    if [ "$choice" == "n" ] || [ "$choice" == "N" ]; then
+        echo "Would you like to create an Ubuntu One account? (Y/n)"
+        read -r choice
+        if [ "$choice" == "n" ] || [ "$choice" == "N" ]; then
+            exit 1
+        else
+            echo "Automatically opening web-page https://login.ubuntu.com/"
+            echo "Please follow the instructions: https://ubuntu.com/core/docs/create-ubuntu-one"
+            xdg-open "https://login.ubuntu.com/" &> /dev/null
+            echo -n "Was an Ubuntu One account created? (Y/n): "
+            read -r choice
+            if [ "$choice" == "n" ] || [ "$choice" == "N" ]; then
+                exit 1
+            fi
+        fi
+    fi    
+}
+
+# Snapcraft login
+snapcraft_login()
+{
+    if ! snapcraft whoami &> /dev/null; then
+	echo "This script requires login to Snapcraft"
+	echo -n "Do you want to login? (Y/n): "
+	read -r login
+	if [ "$login" == "n" ] || [ "$login" == "N" ]; then
+	    exit 1
+	fi
+	snapcraft login
+    fi
+}
+
+# Snapcraft assertion signing key configuration
+snapcraft_sign_key_config()
+{  
+    echo "This script requires a registered Snapcraft assertion signing key"
+    echo -n "Do you have a Snapcraft assertion signing key? (Y/n): "
+    read -r choice
+    if [ "$choice" == "n" ] || [ "$choice" == "N" ]; then
+	echo -n "Would you like to create a new Snapcraft assertion signing key (Y/n): "
+	read -r choice
+	if [ "$choice" == "n" ] || [ "$choice" == "N" ]; then
+	    exit 1
+	fi
+	echo -n "Please provide a name for your new Snapcraft assertion signing key (e.g. my-model-key): "
+	read -r key_name
+	snapcraft create-key "$key_name"
+	snapcraft register-key "$key_name"
+    else
+	echo -n "Please provide a name for your existing Snapcraft assertion signing key: "
+	read -r key_name
+    fi
+
+    if ! snapcraft list-keys | awk 'NR > 2{print $2}' | grep -q "$key_name"; then
+	echo "Cannot find key name $key_name"
+	exit 1
+    fi
+    config_set "$CONFIG_FILE" "Snapcraft-Sign-Key" "$key_name"
+}
+
+# Ubuntu One account SSH public key configuration
+ubuntu_one_ssh_key_config()
+{ 
+    echo "This script requires uploading a SSH public key to your Ubuntu One account to enable SSH your Ubuntu Core devices"
+    echo -n "Do you have a SSH public key uploaded to your Ubuntu One account? (Y/n): "
+    read -r choice
+    if [ "$choice" == "n" ] || [ "$choice" == "N" ]; then
+	echo -n "Do you have a SSH public key to upload? (Y/n): "
+	read -r choice
+	if [ "$choice" == "n" ] || [ "$choice" == "N" ]; then
+	    echo -n "Would you like to create a new SSH key? (Y/n): "
+	    read -r choice
+	    if [ "$choice" == "n" ] || [ "$choice" == "N" ]; then
+		exit 1
+	    fi
+	    echo -n "Please provide a name for your new SSH key (e.g. ubuntu-core): "
+	    read -r key_name
+	    mkdir -p ~/.ssh
+	    chmod 700 ~/.ssh
+	    key_path=~/.ssh/$key_name
+	    ssh-keygen -t rsa -N "" -f "$key_path"
+	    key_path=$key_path.pub
+	else
+	    echo -n "Please provide the file path to your existing SSH public key (e.g. ~/.ssh/<key-name>.pub): "
+	    read -r key_path
+	    eval "key_path=$key_path"
+	fi
+
+	xclip -selection clipboard "$key_path"
+	echo "Automatically added the $key_path to the clipboard."
+	echo "Please follow the instructions: https://ubuntu.com/core/docs/connect-with-ssh"
+	echo "Automatically opening web-page https://login.ubuntu.com/ssh-keys"
+	xdg-open "https://login.ubuntu.com/ssh-keys" &> /dev/null
+    fi
+}
+
+# Load user configuration and persist to configuration file
+# Default of "none" indicates user did not specify a value
+user_config()
+{
+    # Set defaults
+    BASE="${BASE:-"none"}"
+    SNAP_CORE="${SNAP_CORE:-"none"}"
+    SNAP_GADGET="${SNAP_GADGET:-"none"}"
+    SNAP_KERNEL="${SNAP_KERNEL:-"none"}"
+    SNAP_SNAPD="${SNAP_SNAPD:-"none"}"
+    SSH_PORT="${SSH_PORT:-"8022"}"
+
+    # Persist user configuration to file
+    config_set "$CONFIG_FILE" "User_Config_Base" "$BASE"
+    config_set "$CONFIG_FILE" "User_Config_Snap_Core" "$SNAP_CORE"
+    config_set "$CONFIG_FILE" "User_Config_Snap_Gadget" "$SNAP_GADGET"
+    config_set "$CONFIG_FILE" "User_Config_Snap_Kernel" "$SNAP_KERNEL"
+    config_set "$CONFIG_FILE" "User_Config_Snap_Snapd" "$SNAP_SNAPD"
+    config_set "$CONFIG_FILE" "User_Config_SSH_Port" "$SSH_PORT"
+
+    previous_hash=$(config_get "$CONFIG_FILE" "User_Config_Hash")
+    current_hash=$(md5sum user-config | awk '{print $1}')
+    config_set "$CONFIG_FILE" "User_Config_Hash" "$current_hash"
+
+    if [[ "$previous_hash" != "$current_hash" ]]; then
+       echo "Detected user configuration change"
+       config_set "$CONFIG_FILE" "User_Config_Changed" "true"
+       config_set "$CONFIG_FILE" "User_Config_Build" "false"
+    else
+       echo "User configuration did not change"
+       config_set "$CONFIG_FILE" "User_Config_Changed" "false"
+    fi
+}
+
+# Update user configuration
+echo "Reading user configuration..."
+user_config
+echo "Reading user configuration: done"
+
+# Configure Ubuntu One account setup once
+if [ "$(config_get "$CONFIG_FILE" "Ubuntu-One-Account-Setup")" != "done" ]; then
+    echo "Configure Ubuntu One account setup..."
+    ubuntu_one_account_config
+    config_set "$CONFIG_FILE" "Ubuntu-One-Account-Setup" "done"
+    echo "Configure Ubuntu One account setup: done"
+else
+    echo "Ubuntu One account setup already configured"
+fi
+
+# Snapcraft login if required, except first time logout first to ensure fresh login
+if [ "$(config_get "$CONFIG_FILE" "Snapcraft-First-Login")" != "done" ]; then
+    echo "Log out of Snapcraft on the first run..."
+    snapcraft logout || true
+    config_set "$CONFIG_FILE" "Snapcraft-First-Login" "done"
+    echo "Log out of Snapcraft on the first run: done"
+else
+    echo "Skip log out of Snapcraft, this is not the first run"
+fi
+
+echo "Log into Snapcraft..."
+snapcraft_login
+echo "Log into Snapcraft: done"
+
+# Configure Snapcraft assertion signing key once
+if [ "$(config_get "$CONFIG_FILE" "Snapcraft-Sign-Key-Setup")" != "done" ]; then
+    echo "Configure Snapcraft assertion signing key..."
+    snapcraft_sign_key_config
+    config_set "$CONFIG_FILE" "Snapcraft-Sign-Key-Setup" "done"
+    echo "Configure Snapcraft assertion signing key: done"
+else
+   echo "Snapcraft assertion signing key already configured"
+fi
+
+# Configure Ubuntu One account SSH public key once
+if [ "$(config_get "$CONFIG_FILE" "Ubuntu-One-SSH-Key-Setup")" != "done" ]; then
+    echo "Configure Ubuntu One account SSH public key..."
+    ubuntu_one_ssh_key_config
+    config_set "$CONFIG_FILE" "Ubuntu-One-SSH-Key-Setup" "done"
+    echo "Configure Ubuntu One account SSH public key: done"
+else
+    echo "Ubuntu One account SSH public key already configured"
+fi

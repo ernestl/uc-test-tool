@@ -1,0 +1,57 @@
+#!/bin/bash
+set -eu
+
+# Uncomment for verbose debug
+#set -x
+
+# Specify the system to build
+# 
+# SYNTAX
+# ------
+# KEY="VALUE"
+#
+# KEYS                        SUPPORTED VALUES              DESCRIPTION
+# ----                        ----------------              -----------
+# BASE                        core20, core22                The Ubuntu Core base to use. The base and kernel snaps need to be for the same base
+# SNAP_CORE                   core20_<rev>, core22_<rev>    The base snap revision to use instead of the model default
+# SNAP_GADGET                 pc_<rev>                      The gadget snap revision to use instead of the model default
+# SNAP_KERNEL                 pc-kernel_<rev>               The kernel snap revision to use instead of the model default   
+# SNAP_SNAPD                  snapd_<rev>                   The snapd snap revision to use instead of the model default
+# SSH_PORT                    80<digit1><digit2>            The ssh port to connect to Ubuntu Core running on QEMU
+#
+# Find available revisions: snap info <snap-name>
+
+# UC16 Example
+#BASE="core16"
+#SNAP_GADGET="pc_103"
+#SNAP_KERNEL="pc-kernel_1556"
+
+# UC18 Example
+#BASE="core18"
+#SNAP_CORE="core18_2823"
+#SNAP_GADGET="pc_104"
+#SNAP_KERNEL="pc-kernel_1744"
+#SNAP_SNAPD="snapd_21465"
+
+# UC20 Example
+BASE="core20"
+SNAP_CORE="core20_2264"
+SNAP_GADGET="pc_147"
+SNAP_KERNEL="pc-kernel_1752"
+SNAP_SNAPD="snapd_21465"
+
+# UC22 Example
+#BASE="core22"
+#SNAP_CORE="core22_1380"
+#SNAP_GADGET="pc_146"
+#SNAP_KERNEL="pc-kernel_1781"
+#SNAP_SNAPD="snapd_21465"
+
+# UC24 Example
+#BASE="core24"
+#SNAP_CORE="core24_405"
+#SNAP_GADGET="pc_178"
+#SNAP_KERNEL="pc-kernel_1803"
+#SNAP_SNAPD="snapd_21465"
+
+SSH_PORT=8022

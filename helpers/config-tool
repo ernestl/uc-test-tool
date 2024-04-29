@@ -1,0 +1,41 @@
+#!/bin/bash
+
+set -eu
+
+# config-tool is meant to be sourced where required.
+
+# Set configuration option
+# config_set <config_file> <key> <value> 
+config_set()
+{
+    if [ $# -ne 4 ]; then
+	file=$1
+        key=$2
+        value=$3
+
+	if ! [ -f "$file" ]; then
+            touch "$file"
+        fi
+
+	sed -i "/^$key:/d" "$file"
+        echo "$key: $value" >> "$file"
+    fi
+}
+
+# Get configuration option
+# config_get <config_file> <key>
+# returns <value>
+config_get()
+{
+    if [ $# -ne 3 ]; then
+	file=$1
+	key=$2
+
+	if ! [ -f "$file" ]; then
+	    touch "$file"
+	fi
+
+        value=$(grep -oP "$key: \K\S+" < "$file")
+        echo "$value"
+    fi
+}

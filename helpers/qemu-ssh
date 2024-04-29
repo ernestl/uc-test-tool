@@ -1,0 +1,82 @@
+#!/bin/bash
+
+set -eu
+
+# Help
+help()
+{
+    echo "SYNTAX: qemu_ssh [options]"
+    echo "OPTIONS:"
+    echo " -h | --help    Print Help"
+    echo " --ssh-port=    SSH port to use"
+}
+
+# Parse options
+parse_options()
+{
+    # Defaults
+    SSH_PORT="8022"
+
+    if [[ $# -eq 0 ]]; then
+        set -- "--help"
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        key=$1
+        case $key in
+            --ssh-port=*)
+                SSH_PORT="${1#*=}"
+                shift
+                ;;
+            -h|--help)
+                shift
+                help
+                exit 1
+                ;;
+            *)
+                echo "Unknown option: $key"
+                shift
+                help
+                exit 1
+                ;;
+        esac
+    done
+
+    export SSH_PORT
+}
+
+parse_options "$@"
+
+echo "Log in over SSH..."
+
+# Login over SSH
+username=$(snapcraft whoami | grep -oP 'username: \K\S+')
+wait_time=5
+max_retries=60
+success="false"
+echo "Please follow the Ubuntu Core Prompt in the QEMU graphical window to complete network and user configuration."
+echo "After successful network and user configuration a SSH terminal will be automatically opened in a new window."
+echo -n "Trying to connect to QEMU device as $username using IP address localhost port $SSH_PORT."
+for ((i = 1; i <= max_retries; i++)); do
+    command="ssh -o StrictHostKeyChecking=no -o BatchMode=yes $username@localhost -p $SSH_PORT exit &>/dev/null"
+    if ! eval "$command"; then
+        echo -n "."         
+        sleep $wait_time
+    else
+	echo ""
+        echo "Detected device is online"
+        success="true"
+        break
+    fi
+done
+if [ $success == "false" ]; then
+    echo ""
+    echo "Error: Failed to connect after $max_retries retries."
+    exit 1
+fi
+
+echo "Creating SSH terminal"
+command="ssh -o StrictHostKeyChecking=no $username@localhost -p $SSH_PORT"
+gnome-terminal --title="SSH terminal" -- bash -c "$command; exec bash"
+
+echo "Log in over SSH: done"

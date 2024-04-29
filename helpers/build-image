@@ -1,0 +1,172 @@
+#!/bin/bash
+
+set -eu
+
+this_dir=$(dirname "$(realpath "$0")")
+
+# Settings
+MODELS_DIR="$this_dir/../models"
+IMAGE_DIR="$this_dir/../images"
+WORK_DIR="$this_dir/../work"
+
+# Help
+help()
+{
+    echo "SYNTAX: image-creator <base> <snapcraft-key-name> [options]"
+    echo "REQUIRED:"
+    echo " <base>                 Core base e.g. core, core18, core20, core22, core24 etc."
+    echo " <snapcraft-key-name>   Snapcraft signing key name as shown with: snapcraft list-keys"
+    echo "OPTIONS:"
+    echo " --core-snap            Core snap base name core<release>_<revision> e.g. core20_2182"
+    echo " --gadget-snap          Gadget snap base name <gadget_name>_<revision> e.g. pc_147"
+    echo " --kernel-snap          Kernel snap base name <kernel_name>_<revision> e.g. pc-kernel_1698"
+    echo " --snapd-snap           Snapd snap base name snapd_<revision> e.g. snapd_21465"
+    echo " --image-size           Suggested image size e.g. 3G"
+    echo " -h | --help            Print Help"
+}
+
+# Download snap and return ubuntu-image include string
+# download_snap_override <work_directory> <snap_basename>
+# returns <snap_include_string>
+download_snap_override()
+{
+	work_dir=$1
+	snap_basename=$2
+
+	if [[ -n "$snap_basename" ]]; then  
+		target_dir="$work_dir/snaps"
+		snap_name=${snap_basename%%_*}
+		snap_rev=${snap_basename#*_}
+		snap download "$snap_name" --target-directory="$target_dir" --revision="$snap_rev" &> /dev/null
+		echo "--snap=$target_dir/$snap_basename.snap"
+	fi
+}
+
+# Parse options
+parse_options()
+{
+    # Defaults
+    CORE_BASENAME="none"
+    GADGET_BASENAME="none"
+    KERNEL_BASENAME="none"
+    SNAPD_BASENAME="none"
+    IMAGE_SIZE="3G"
+
+    param_count=$#
+    if [[ $# -lt 0 ]]; then
+        set -- "--help"
+    fi
+ 
+    # Get optional parameters
+    while [[ $# -gt 0 ]]; do
+        key=$1
+        case $key in
+ 	    --core-snap=*)
+		CORE_BASENAME="${1#*=}"
+		shift
+	        ;;
+	    --gadget-snap=*)
+		GADGET_BASENAME="${1#*=}"
+		shift
+		;;
+	    --kernel-snap=*)
+		KERNEL_BASENAME="${1#*=}"
+		shift
+		;;
+	    --snapd-snap=*)
+		SNAPD_BASENAME="${1#*=}"
+		shift
+		;;
+	    --image-size=*)
+		IMAGE_SIZE="${1#*=}"
+		shift
+		;;
+            -h|--help)
+                shift
+		help
+		exit 1
+                ;;
+            *)
+                if [[ $# == "$param_count" ]]; then
+                    BASE=$1
+		    SNAPCRAFT_KEY=$2
+		    shift 2
+		else
+                    echo "Unknown option: $key"
+                    help
+		    exit 1
+		fi
+                ;;
+        esac
+    done
+ 
+    export BASE SNAPCRAFT_KEY IMAGE_SIZE CORE_BASENAME GADGET_BASENAME KERNEL_BASENAME SNAPD_BASENAME
+}
+
+parse_options "$@"
+
+echo "Building image..."
+
+# Download required overrides
+mkdir -p "$WORK_DIR"
+override_snaps=()
+if [[ "$CORE_BASENAME" != "none" ]]; then
+    override_snaps+=("$(download_snap_override "$WORK_DIR" "$CORE_BASENAME")")
+fi
+if [[ "$GADGET_BASENAME" != "none" ]]; then
+    override_snaps+=("$(download_snap_override "$WORK_DIR" "$GADGET_BASENAME")")
+fi
+if [[ "$KERNEL_BASENAME" != "none" ]]; then
+    override_snaps+=("$(download_snap_override "$WORK_DIR" "$KERNEL_BASENAME")")
+fi
+if [[ "$SNAPD_BASENAME" != "none" ]]; then
+    override_snaps+=("$(download_snap_override "$WORK_DIR" "$SNAPD_BASENAME")")
+fi
+
+# Download model
+name_base_part="${BASE/core/core-}"
+model_download_url="https://raw.githubusercontent.com/snapcore/models/master/"
+model_json="ubuntu-""$name_base_part""-amd64.json"
+model_json_working="$WORK_DIR/my-model.json"
+if [[ $BASE == "core16" || $BASE == "core18" ]]; then 
+    cp "$MODELS_DIR"/"$model_json" "$model_json_working"
+else	
+    wget -O "$model_json_working" "$model_download_url""$model_json"
+fi
+
+# Retrieve snapcraft developer account information
+id=$(snapcraft whoami | grep -oP 'id: \K\S+')
+
+# Modify authority-id to allow model creation
+model_json_tmp=$model_json_working.temp
+current_time=$(date -Iseconds --utc)
+jq --arg  AUTH_ID "$id" '."authority-id" = $AUTH_ID' "$model_json_working" > "$model_json_tmp"
+mv "$model_json_tmp" "$model_json_working"
+jq --arg  BRAND_ID "$id" '."brand-id" = $BRAND_ID' "$model_json_working" > "$model_json_tmp"
+mv "$model_json_tmp" "$model_json_working"
+jq --arg  TIMESTAMP "$current_time" '.timestamp = $TIMESTAMP' "$model_json_working" > "$model_json_tmp"
+mv "$model_json_tmp" "$model_json_working"
+
+# Modify the grade
+if ! [[ $BASE == "core16" || $BASE == "core18" ]]; then
+    if [[ -z "${override_snaps[*]}" ]]; then
+        model_json_tmp=$model_json_working.temp
+        grade="dangerous"
+        jq --arg GRADE $grade '.grade = $GRADE' "$model_json_working" > "$model_json_tmp"
+        mv "$model_json_tmp" "$model_json_working"
+    fi
+fi
+
+# Sign the model
+model_assertion_working="$WORK_DIR/my-model.model"
+snap sign -k "$SNAPCRAFT_KEY" "$model_json_working" > "$model_assertion_working"
+
+# Build the image
+mkdir -p "$IMAGE_DIR"
+ubuntu-image snap "$model_assertion_working" \
+--output-dir="$IMAGE_DIR" \
+--validation=enforce \
+--image-size="$IMAGE_SIZE" \
+"${override_snaps[@]}"
+
+echo "Building image: done"

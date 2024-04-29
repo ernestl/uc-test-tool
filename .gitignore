@@ -1,0 +1,14 @@
+# Work directories and image output
+work/
+images/
+
+# configuration file
+.config
+
+# swap and temporary files
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+._*
