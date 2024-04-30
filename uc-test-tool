@@ -11,7 +11,55 @@ HELPERS_DIR="$this_dir/helpers"
 
 # Includes
 # shellcheck disable=SC1091
-source "$HELPERS_DIR"/config-tool 
+source "$HELPERS_DIR"/config-tool
+
+# Help
+help()
+{
+    echo "SYNTAX: uc-test-image [options]"
+    echo "OPTIONS:"
+    echo " --reset-config         Reset configuration to fresh install state. This allows for complete reconfiguration."
+    echo " -h | --help            Print Help"
+}
+
+parse_options()
+{
+    # Defaults
+    RESET_CONFIG="false"
+
+    # Get optional parameters
+    while [[ $# -gt 0 ]]; do
+        key=$1
+        case $key in
+	    --reset-config)
+                RESET_CONFIG="true"
+                shift
+		;;
+	    -h|--help)
+                shift
+                help
+                exit 1
+                ;;
+	    *)
+                echo "Unknown option: $key"
+		help
+		exit 1
+		;;
+	esac
+    done
+
+    export RESET_CONFIG
+}
+
+parse_options "$@"
+
+# Reset configuration if required
+if [[ $RESET_CONFIG == "true" ]]; then
+    echo "Resetting configuration..."
+    config_reset "$CONFIG_FILE"
+    echo "Resetting configuration: done"
+    exit 0
+fi
 
 # Install prerequisite tools
 sudo "$HELPERS_DIR"/install
@@ -20,13 +68,13 @@ sudo "$HELPERS_DIR"/install
 "$HELPERS_DIR"/configure
 
 # Load configuration state
-user_config_changed=$(config_get "$CONFIG_FILE" "User_Config_Changed")
-user_config_build=$(config_get "$CONFIG_FILE" "User_Config_Build")
-base=$(config_get "$CONFIG_FILE" "User_Config_Base")
-core_snap=$(config_get "$CONFIG_FILE" "User_Config_Snap_Core")
-gadget_snap=$(config_get "$CONFIG_FILE" "User_Config_Snap_Gadget")
-kernel_snap=$(config_get "$CONFIG_FILE" "User_Config_Snap_Kernel")
-snapd_snap=$(config_get "$CONFIG_FILE" "User_Config_Snap_Snapd")
+user_config_changed=$(config_get "$CONFIG_FILE" "User-Config-Changed")
+user_config_build=$(config_get "$CONFIG_FILE" "User-Config-Build")
+base=$(config_get "$CONFIG_FILE" "User-Config-Base")
+core_snap=$(config_get "$CONFIG_FILE" "User-Config-Snap-Core")
+gadget_snap=$(config_get "$CONFIG_FILE" "User-Config-Snap-Gadget")
+kernel_snap=$(config_get "$CONFIG_FILE" "User-Config-Snap-Kernel")
+snapd_snap=$(config_get "$CONFIG_FILE" "User-Config-Snap-Snapd")
 snapcraft_sign_key=$(config_get "$CONFIG_FILE" "Snapcraft-Sign-Key")
 
 # Image base is required
@@ -58,11 +106,11 @@ else
     "$snapcraft_sign_key" \
     --image-size="3G" \
     "${override_snaps[@]}"
-    config_set "$CONFIG_FILE" "User_Config_Build" "true"
+    config_set "$CONFIG_FILE" "User-Config-Build" "true"
 fi
 
 # Run PC image in separate terminal
-ssh_port=$(config_get "$CONFIG_FILE" "User_Config_SSH_Port")
+ssh_port=$(config_get "$CONFIG_FILE" "User-Config-SSH-Port")
 image_file=$IMAGE_DIR/pc.img
 gnome-terminal --title="QEMU" -- bash -c "sudo $HELPERS_DIR/qemu-run-image --system=pc --image-file=$image_file --ssh-port=$ssh_port"
 

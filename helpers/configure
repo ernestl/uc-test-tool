@@ -128,24 +128,24 @@ user_config()
     SSH_PORT="${SSH_PORT:-"8022"}"
 
     # Persist user configuration to file
-    config_set "$CONFIG_FILE" "User_Config_Base" "$BASE"
-    config_set "$CONFIG_FILE" "User_Config_Snap_Core" "$SNAP_CORE"
-    config_set "$CONFIG_FILE" "User_Config_Snap_Gadget" "$SNAP_GADGET"
-    config_set "$CONFIG_FILE" "User_Config_Snap_Kernel" "$SNAP_KERNEL"
-    config_set "$CONFIG_FILE" "User_Config_Snap_Snapd" "$SNAP_SNAPD"
-    config_set "$CONFIG_FILE" "User_Config_SSH_Port" "$SSH_PORT"
+    config_set "$CONFIG_FILE" "User-Config-Base" "$BASE"
+    config_set "$CONFIG_FILE" "User-Config-Snap-Core" "$SNAP_CORE"
+    config_set "$CONFIG_FILE" "User-Config-Snap-Gadget" "$SNAP_GADGET"
+    config_set "$CONFIG_FILE" "User-Config-Snap-Kernel" "$SNAP_KERNEL"
+    config_set "$CONFIG_FILE" "User-Config-Snap-Snapd" "$SNAP_SNAPD"
+    config_set "$CONFIG_FILE" "User-Config-SSH-Port" "$SSH_PORT"
 
-    previous_hash=$(config_get "$CONFIG_FILE" "User_Config_Hash")
+    previous_hash=$(config_get "$CONFIG_FILE" "User-Config-Hash")
     current_hash=$(md5sum user-config | awk '{print $1}')
-    config_set "$CONFIG_FILE" "User_Config_Hash" "$current_hash"
+    config_set "$CONFIG_FILE" "User-Config-Hash" "$current_hash"
 
     if [[ "$previous_hash" != "$current_hash" ]]; then
        echo "Detected user configuration change"
-       config_set "$CONFIG_FILE" "User_Config_Changed" "true"
-       config_set "$CONFIG_FILE" "User_Config_Build" "false"
+       config_set "$CONFIG_FILE" "User-Config-Changed" "true"
+       config_set "$CONFIG_FILE" "User-Config-Build" "false"
     else
        echo "User configuration did not change"
-       config_set "$CONFIG_FILE" "User_Config_Changed" "false"
+       config_set "$CONFIG_FILE" "User-Config-Changed" "false"
     fi
 }
 
@@ -159,6 +159,8 @@ if [ "$(config_get "$CONFIG_FILE" "Ubuntu-One-Account-Setup")" != "done" ]; then
     echo "Configure Ubuntu One account setup..."
     ubuntu_one_account_config
     config_set "$CONFIG_FILE" "Ubuntu-One-Account-Setup" "done"
+    # Force rebuild to ensure image uses updated key
+    config_set "$CONFIG_FILE" "User-Config-Build" "false"
     echo "Configure Ubuntu One account setup: done"
 else
     echo "Ubuntu One account setup already configured"
@@ -193,6 +195,8 @@ if [ "$(config_get "$CONFIG_FILE" "Ubuntu-One-SSH-Key-Setup")" != "done" ]; then
     echo "Configure Ubuntu One account SSH public key..."
     ubuntu_one_ssh_key_config
     config_set "$CONFIG_FILE" "Ubuntu-One-SSH-Key-Setup" "done"
+    # Force rebuild to ensure image uses updated key
+    config_set "$CONFIG_FILE" "User-Config-Build" "false"
     echo "Configure Ubuntu One account SSH public key: done"
 else
     echo "Ubuntu One account SSH public key already configured"
