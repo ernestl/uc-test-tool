@@ -40,7 +40,7 @@ if [ "$(config_get "$CONFIG_FILE" "Install")" != "done" ]; then
     run apt install -y xclip
     run snap install jq
     run snap install snapcraft --classic
-    run snap install ubuntu-image
+    run snap install ubuntu-image --classic
     # Remember successful installation
     config_set "$CONFIG_FILE" "Install" "done"
     echo "Installing tools: done"
